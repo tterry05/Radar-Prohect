@@ -1,0 +1,58 @@
+# STM32CubeIDE / Eclipse Project Files
+.settings/
+.metadata/
+.cproject
+.project
+
+# Build outputs
+Debug/
+Release/
+build/
+*.o
+*.d
+*.elf
+*.hex
+*.bin
+*.map
+*.list
+*.su
+*.cyclo
+
+# Backup files
+*.bak
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE specific
+*.launch
+.vscode/
+*.code-workspace
+
+# STM32CubeMX generated backup
+*.ioc.bak
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+
+# Python (for future GUI)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+*.egg-info/
+dist/
+build/
