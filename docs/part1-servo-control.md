@@ -262,11 +262,11 @@ vTaskDelayUntil:           Fixed period (exactly 100ms)
 
 ---
 
-## API for GUI Integration
+## API for LCD Display Integration
 
 ### Getting Current State
 
-For a Python GUI (or any external application), you need to read the servo's current state:
+For the on-board LCD display, you need to read the servo's current state:
 
 ```c
 // Get the current angle (0-180)
@@ -278,40 +278,27 @@ SweepDirection_t direction = Servo_GetDirection();
 // SWEEP_LEFT  = 1 (moving toward 0°)
 ```
 
-### Suggested Data Format
+### LCD Display Usage
 
-When implementing UART/USB communication (Part 3), use this format:
+The STM32F413H-Discovery has a 240x240 pixel LCD. To draw the radar sweep:
 
-```
-SERVO:<angle>,<direction>\n
-```
+```c
+// In your LCD display task:
+uint16_t angle = Servo_GetCurrentAngle();
 
-Example output:
-```
-SERVO:45,0
-SERVO:47,0
-SERVO:49,0
-...
-SERVO:180,1
-SERVO:178,1
-```
+// Convert polar to cartesian for LCD
+// Center point at (120, 240) - bottom center of screen
+#define CENTER_X 120
+#define CENTER_Y 240
+#define RADIUS   200
 
-### Python GUI Parsing Example
+// Calculate sweep line endpoint
+float radians = (angle - 90) * 3.14159f / 180.0f;  // -90 to +90 from vertical
+int16_t end_x = CENTER_X + (int16_t)(RADIUS * cosf(radians));
+int16_t end_y = CENTER_Y - (int16_t)(RADIUS * sinf(radians));  // Y inverted for LCD
 
-```python
-import serial
-
-ser = serial.Serial('COM3', 115200)
-
-while True:
-    line = ser.readline().decode().strip()
-    if line.startswith('SERVO:'):
-        data = line[6:]  # Remove "SERVO:"
-        angle, direction = map(int, data.split(','))
-        
-        # Update radar display
-        radar_display.set_angle(angle)
-        radar_display.set_direction("RIGHT" if direction == 0 else "LEFT")
+// Draw line from center to endpoint
+BSP_LCD_DrawLine(CENTER_X, CENTER_Y, end_x, end_y);
 ```
 
 ### State Machine Diagram
@@ -374,7 +361,9 @@ The pulse range may exceed your servo's physical limits. Reduce the range:
 
 ## Next Steps
 
-In **Part 2**, we'll add an ultrasonic distance sensor (HC-SR04) to measure distances at each angle, completing the radar scanning functionality.
+In **Part 2**, we'll add an ultrasonic distance sensor (HC-SR04) to measure distances at each angle.
+
+In **Part 3**, we'll implement the LCD display to show a real-time radar visualization using the on-board 240x240 LCD.
 
 ---
 

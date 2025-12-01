@@ -26,7 +26,7 @@ This radar project implements a servo-controlled scanning mechanism that sweeps 
 - ✅ Configurable sweep speed and step size
 - ✅ Real-time angle tracking
 - 🔄 *Coming Soon:* Distance sensor integration
-- 🔄 *Coming Soon:* Python GUI for visualization
+- 🔄 *Coming Soon:* On-board LCD radar display
 
 ## Hardware Requirements
 
@@ -122,18 +122,17 @@ SweepDirection_t Servo_GetDirection(void);
 HAL_StatusTypeDef Servo_Reset(void);
 ```
 
-### Getting Servo Data (for GUI Integration)
+### Getting Servo Data (for LCD Display)
 
-To read the current servo state for external applications (like a Python GUI):
+To read the current servo state for the LCD radar display:
 
 ```c
-// In your communication task:
+// In your display task:
 uint16_t currentAngle = Servo_GetCurrentAngle();      // 0-180
 SweepDirection_t dir = Servo_GetDirection();          // SWEEP_LEFT or SWEEP_RIGHT
 
-// Send over UART/USB:
-// Format: "ANGLE:<angle>,DIR:<0|1>\n"
-printf("ANGLE:%d,DIR:%d\n", currentAngle, dir);
+// Use angle to draw radar sweep line on LCD
+// Convert angle to x,y coordinates for the 240x240 display
 ```
 
 ### Configuration Parameters
@@ -152,8 +151,7 @@ Edit `servo_control.h` to customize:
 |------|-------------|--------|
 | [Part 1: Servo Control](docs/part1-servo-control.md) | PWM setup, FreeRTOS task, sweep logic | ✅ Complete |
 | Part 2: Distance Sensor | HC-SR04 ultrasonic integration | 🔄 Planned |
-| Part 3: Communication | UART/USB data transmission | 🔄 Planned |
-| Part 4: Python GUI | Real-time radar visualization | 🔄 Planned |
+| Part 3: LCD Display | On-board 240x240 LCD radar visualization | 🔄 Planned |
 
 ## Team
 

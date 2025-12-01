@@ -44,15 +44,6 @@ Thumbs.db
 *.temp
 *.log
 
-# Python (for future GUI)
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-venv/
-.env
-*.egg-info/
-dist/
-build/
+# Generated files
+*.tmp
+*.bak
