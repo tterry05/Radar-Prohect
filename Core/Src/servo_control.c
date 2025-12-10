@@ -16,6 +16,8 @@ static ServoState_t servoState = {
     .initialized = false
 };
 
+uint16_t xCurrentAngle = SERVO_CENTER_ANGLE;
+
 /* Private Function Prototypes */
 static uint16_t Servo_AngleToPulse(uint16_t angle);
 
@@ -62,6 +64,7 @@ HAL_StatusTypeDef Servo_SetAngle(uint16_t angle) {
     __HAL_TIM_SET_COMPARE(htim_servo, TIM_CHANNEL_1, pulse);
 
     servoState.currentAngle = angle;
+    xCurrentAngle = angle;  // ADD THIS LINE - Update shared variable
 
     return HAL_OK;
 }

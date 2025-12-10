@@ -26,6 +26,8 @@
 #include "stm32f4xx_hal.h"
 #include <stdbool.h>
 
+extern uint16_t xCurrentAngle;
+
 /* Servo Parameters - Extended range for full 180° rotation */
 #define SERVO_MIN_PULSE_US      500     // 0.5ms = 0 degrees
 #define SERVO_MAX_PULSE_US      2500    // 2.5ms = 180 degrees

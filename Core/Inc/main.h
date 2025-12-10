@@ -69,6 +69,8 @@ void Error_Handler(void);
 #define LCD_BL_CTRL_GPIO_Port GPIOE
 #define ARD_D5_Pin GPIO_PIN_6
 #define ARD_D5_GPIO_Port GPIOE
+#define TRIGGER_Pin GPIO_PIN_13
+#define TRIGGER_GPIO_Port GPIOC
 #define OSC32_IN_Pin GPIO_PIN_14
 #define OSC32_IN_GPIO_Port GPIOC
 #define OSC32_OUT_Pin GPIO_PIN_15
@@ -93,8 +95,8 @@ void Error_Handler(void);
 #define QSPI_BK1_IO0_GPIO_Port GPIOF
 #define QSPI_BK1_IO1_Pin GPIO_PIN_9
 #define QSPI_BK1_IO1_GPIO_Port GPIOF
-#define ARD_D3_Pin GPIO_PIN_10
-#define ARD_D3_GPIO_Port GPIOF
+#define ECHO_Pin GPIO_PIN_10
+#define ECHO_GPIO_Port GPIOF
 #define STLK_MCO_Pin GPIO_PIN_0
 #define STLK_MCO_GPIO_Port GPIOH
 #define WIFI_RST_Pin GPIO_PIN_1
@@ -105,7 +107,7 @@ void Error_Handler(void);
 #define CODEC_ext_SD_GPIO_Port GPIOC
 #define CODEC_SD_Pin GPIO_PIN_3
 #define CODEC_SD_GPIO_Port GPIOC
-#define SERVO_PWM_Pin GPIO_PIN_5
+#define SERVO_PWM_Pin GPIO_PIN_0
 #define SERVO_PWM_GPIO_Port GPIOA
 #define EDIT_ME_Pin GPIO_PIN_1
 #define EDIT_ME_GPIO_Port GPIOA

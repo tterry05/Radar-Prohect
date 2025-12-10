@@ -24,6 +24,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "servo_control.h"
+#include "hc_sr04.h"
+#include <stdio.h>
+#include <string.h>
+#include "semphr.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +62,8 @@ QSPI_HandleTypeDef hqspi;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim5;
+TIM_HandleTypeDef htim9;
 
 UART_HandleTypeDef huart10;
 UART_HandleTypeDef huart6;
@@ -72,7 +78,30 @@ const osThreadAttr_t ServoTask_attributes = {
   .stack_size = 128 * 4,
   .priority = (osPriority_t) osPriorityNormal,
 };
+/* Definitions for UltrasonicMeasu */
+osThreadId_t UltrasonicMeasuHandle;
+const osThreadAttr_t UltrasonicMeasu_attributes = {
+  .name = "UltrasonicMeasu",
+  .stack_size = 256 * 4,
+  .priority = (osPriority_t) osPriorityHigh,
+};
 /* USER CODE BEGIN PV */
+HC_SR04_HandleTypeDef hc_sr04;
+float distance = 0.0;
+extern UART_HandleTypeDef huart6;
+// FreeRTOS synchronization objects
+xSemaphoreHandle xUltrasonicSensorMutex = NULL;
+xSemaphoreHandle xRawDataBufferMutex = NULL;
+TaskHandle_t xRadarDataProcessingTaskHandle = NULL;
+
+// Shared data structure
+typedef struct {
+    uint16_t angle;
+    float distance_cm;
+} RawData_t;
+
+RawData_t xRawDataBuffer = {0, 0.0f};
+
 
 /* USER CODE END PV */
 
@@ -91,8 +120,12 @@ static void MX_UART10_Init(void);
 static void MX_USART6_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM5_Init(void);
+static void MX_TIM9_Init(void);
 void StartServoTask(void *argument);
+void StartTUltrasonicMeasurementTask(void *argument);
 
+static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -143,12 +176,21 @@ int main(void)
   MX_USART6_UART_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+  MX_TIM5_Init();
+  MX_TIM9_Init();
+
+  /* Initialize interrupts */
+  MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
   // Initialize servo motor
   if (Servo_Init(&htim2) != HAL_OK) {
       Error_Handler();
   }
+
+  HCSR04_Init(&hc_sr04, TRIGGER_GPIO_Port, TRIGGER_Pin, &htim5,TIM_CHANNEL_4, &htim9);
+    // 2. Start the delay timer (required by hc_sr04.c's delay function)
+    HAL_TIM_Base_Start(&htim9);
 
   // Wait at center position
   HAL_Delay(1000);
@@ -160,6 +202,12 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
+  xUltrasonicSensorMutex = xSemaphoreCreateMutex();
+    xRawDataBufferMutex = xSemaphoreCreateMutex();
+
+    if (xUltrasonicSensorMutex == NULL || xRawDataBufferMutex == NULL) {
+        Error_Handler();
+    }
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -177,6 +225,9 @@ int main(void)
   /* Create the thread(s) */
   /* creation of ServoTask */
   ServoTaskHandle = osThreadNew(StartServoTask, NULL, &ServoTask_attributes);
+
+  /* creation of UltrasonicMeasu */
+  UltrasonicMeasuHandle = osThreadNew(StartTUltrasonicMeasurementTask, NULL, &UltrasonicMeasu_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -219,10 +270,12 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI
+                              |RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
   RCC_OscInitStruct.PLL.PLLM = 4;
@@ -248,6 +301,17 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief NVIC Configuration.
+  * @retval None
+  */
+static void MX_NVIC_Init(void)
+{
+  /* TIM5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(TIM5_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(TIM5_IRQn);
 }
 
 /**
@@ -565,7 +629,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 15;
+  htim2.Init.Prescaler = 83;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim2.Init.Period = 19999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -646,6 +710,102 @@ static void MX_TIM3_Init(void)
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 32-1;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 4294967295;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_IC_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim5, &sConfigIC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
+
+}
+
+/**
+  * @brief TIM9 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM9_Init(void)
+{
+
+  /* USER CODE BEGIN TIM9_Init 0 */
+
+  /* USER CODE END TIM9_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+
+  /* USER CODE BEGIN TIM9_Init 1 */
+
+  /* USER CODE END TIM9_Init 1 */
+  htim9.Instance = TIM9;
+  htim9.Init.Prescaler = 32-1;
+  htim9.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim9.Init.Period = 65535;
+  htim9.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim9.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim9) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim9, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM9_Init 2 */
+
+  /* USER CODE END TIM9_Init 2 */
 
 }
 
@@ -741,10 +901,10 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(GPIOE, LED1_RED_Pin|MEMS_LED_Pin|LCD_BL_CTRL_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(EDIT_ME_GPIO_Port, EDIT_ME_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, TRIGGER_Pin|LED2_GREEN_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED2_GREEN_GPIO_Port, LED2_GREEN_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(EDIT_ME_GPIO_Port, EDIT_ME_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LCD_CTP_RST_Pin|LCD_TE_Pin|WIFI_WKUP_Pin, GPIO_PIN_RESET);
@@ -759,13 +919,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : ARD_D5_Pin */
-  GPIO_InitStruct.Pin = ARD_D5_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+  /*Configure GPIO pins : TRIGGER_Pin LED2_GREEN_Pin */
+  GPIO_InitStruct.Pin = TRIGGER_Pin|LED2_GREEN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF3_TIM9;
-  HAL_GPIO_Init(ARD_D5_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : ARD_D0_Pin ARD_D1_Pin */
   GPIO_InitStruct.Pin = ARD_D0_Pin|ARD_D1_Pin;
@@ -774,14 +933,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF8_UART7;
   HAL_GPIO_Init(GPIOF, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : ARD_D3_Pin */
-  GPIO_InitStruct.Pin = ARD_D3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  GPIO_InitStruct.Alternate = GPIO_AF2_TIM5;
-  HAL_GPIO_Init(ARD_D3_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : EDIT_ME_Pin */
   GPIO_InitStruct.Pin = EDIT_ME_Pin;
@@ -797,13 +948,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF12_SDIO;
   HAL_GPIO_Init(SD_CMD_GPIO_Port, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : LED2_GREEN_Pin */
-  GPIO_InitStruct.Pin = LED2_GREEN_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED2_GREEN_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : SD_Detect_Pin */
   GPIO_InitStruct.Pin = SD_Detect_Pin;
@@ -974,7 +1118,13 @@ static void MX_FSMC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
+{
+  // Only call the HCSR04 ISR if the interrupt came from TIM5 (Input Capture)
+  if (htim->Instance == TIM5) {
+     HCSR04_IC_ISR(&hc_sr04, htim);
+  }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartServoTask */
@@ -1004,6 +1154,77 @@ void StartServoTask(void *argument)
 		vTaskDelayUntil( &xLastWakeTime, xFrequency );
 	}
   /* USER CODE END 5 */
+}
+
+/* USER CODE BEGIN Header_StartTUltrasonicMeasurementTask */
+/**
+* @brief Function implementing the UltrasonicMeasu thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartTUltrasonicMeasurementTask */
+void StartTUltrasonicMeasurementTask(void *argument)
+{
+  /* USER CODE BEGIN StartTUltrasonicMeasurementTask */
+	TickType_t xLastWakeTime;
+	    const TickType_t xPeriod = pdMS_TO_TICKS(100);
+
+	    xLastWakeTime = xTaskGetTickCount();
+
+	    /* Infinite loop */
+	    for(;;)
+	    {
+	        // 1. Enforce 100ms Hard Real-Time Periodicity
+	        vTaskDelayUntil(&xLastWakeTime, xPeriod);
+
+	        // 2. Acquire Mutex to protect the physical sensor hardware
+	        if (xSemaphoreTake(xUltrasonicSensorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+	        {
+	            float distance;
+
+	            // --- A. Trigger the sensor ---
+	            HCSR04_Trigger(&hc_sr04);
+
+	            // **FIX: Add delay to allow sensor to complete measurement**
+	            // HC-SR04 needs up to 38ms to complete measurement (max range ~4m)
+	            vTaskDelay(pdMS_TO_TICKS(60));  // Wait 60ms for measurement to complete
+
+	            // --- B. Read the distance ---
+	            distance = HCSR04_ReadDistance(&hc_sr04);
+
+	            // Release sensor mutex
+	            xSemaphoreGive(xUltrasonicSensorMutex);
+
+	            // 3. Save result to the shared Raw Data Buffer (Protected by its own Mutex)
+	            if (xSemaphoreTake(xRawDataBufferMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+	            {
+	                // Read the current angle (from the Servo Sweep Task's shared variable)
+	                xRawDataBuffer.angle = xCurrentAngle;
+	                xRawDataBuffer.distance_cm = distance;
+
+	                xSemaphoreGive(xRawDataBufferMutex);
+
+	                // 4. Notify the Radar Data Processing Task that a new reading is ready
+	                // (Currently not implemented, so skip this for now)
+	                if (xRadarDataProcessingTaskHandle != NULL)
+	                {
+	                    xTaskNotifyGive(xRadarDataProcessingTaskHandle);
+	                }
+
+	                // --- 5. UART Output for debugging ---
+	                char uartBuf[100];
+	                sprintf(uartBuf, "A=%u, D=%.1f cm\r\n", xCurrentAngle, distance);
+	                HAL_UART_Transmit(&huart6, (uint8_t *)uartBuf, strlen(uartBuf), 100);
+	            }
+	        }
+	        else
+	        {
+	            // Failed to get sensor mutex - report error
+	            char errorBuf[] = "ERROR: Sensor mutex timeout\r\n";
+	            HAL_UART_Transmit(&huart6, (uint8_t *)errorBuf, strlen(errorBuf), 100);
+	        }
+	    }
+  /* USER CODE END StartTUltrasonicMeasurementTask */
 }
 
 /**

@@ -104,7 +104,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     /**ADC1 GPIO Configuration
     PC0     ------> ADC1_IN10
     PA2     ------> ADC1_IN2
-    PA5     ------> NOW USED FOR SERVO PWM (TIM2_CH1) - REMOVED FROM ADC
+    PA5     ------> ADC1_IN5
     PC4     ------> ADC1_IN14
     PB1     ------> ADC1_IN9
     */
@@ -113,7 +113,7 @@ void HAL_ADC_MspInit(ADC_HandleTypeDef* hadc)
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-    GPIO_InitStruct.Pin = ARD_A2_Pin;  // Removed ARD_A3_Pin (PA5) - used for servo
+    GPIO_InitStruct.Pin = ARD_A2_Pin|ARD_A3_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
@@ -764,6 +764,52 @@ void HAL_TIM_Base_MspInit(TIM_HandleTypeDef* htim_base)
 
     /* USER CODE END TIM3_MspInit 1 */
   }
+  else if(htim_base->Instance==TIM5)
+  {
+    /* USER CODE BEGIN TIM5_MspInit 0 */
+
+    /* USER CODE END TIM5_MspInit 0 */
+    /* Peripheral clock enable */
+    __HAL_RCC_TIM5_CLK_ENABLE();
+
+    __HAL_RCC_GPIOF_CLK_ENABLE();
+    /**TIM5 GPIO Configuration
+    PF10     ------> TIM5_CH4
+    */
+    GPIO_InitStruct.Pin = ECHO_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF2_TIM5;
+    HAL_GPIO_Init(ECHO_GPIO_Port, &GPIO_InitStruct);
+
+    /* USER CODE BEGIN TIM5_MspInit 1 */
+
+    /* USER CODE END TIM5_MspInit 1 */
+  }
+  else if(htim_base->Instance==TIM9)
+  {
+    /* USER CODE BEGIN TIM9_MspInit 0 */
+
+    /* USER CODE END TIM9_MspInit 0 */
+    /* Peripheral clock enable */
+    __HAL_RCC_TIM9_CLK_ENABLE();
+
+    __HAL_RCC_GPIOE_CLK_ENABLE();
+    /**TIM9 GPIO Configuration
+    PE6     ------> TIM9_CH2
+    */
+    GPIO_InitStruct.Pin = ARD_D5_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    GPIO_InitStruct.Alternate = GPIO_AF3_TIM9;
+    HAL_GPIO_Init(ARD_D5_GPIO_Port, &GPIO_InitStruct);
+
+    /* USER CODE BEGIN TIM9_MspInit 1 */
+
+    /* USER CODE END TIM9_MspInit 1 */
+  }
 
 }
 
@@ -778,14 +824,14 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef* htim)
 
     __HAL_RCC_GPIOA_CLK_ENABLE();
     /**TIM2 GPIO Configuration
-    PA5     ------> TIM2_CH1 (Changed from PA0 - PA0 is USER BUTTON!)
+    PA0     ------> TIM2_CH1
     */
-    GPIO_InitStruct.Pin = GPIO_PIN_5;  // PA5 = Arduino A3
+    GPIO_InitStruct.Pin = SERVO_PWM_Pin;
     GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
     GPIO_InitStruct.Pull = GPIO_NOPULL;
     GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
     GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
-    HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+    HAL_GPIO_Init(SERVO_PWM_GPIO_Port, &GPIO_InitStruct);
 
     /* USER CODE BEGIN TIM2_MspPostInit 1 */
 
@@ -828,6 +874,42 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef* htim_base)
     /* USER CODE BEGIN TIM3_MspDeInit 1 */
 
     /* USER CODE END TIM3_MspDeInit 1 */
+  }
+  else if(htim_base->Instance==TIM5)
+  {
+    /* USER CODE BEGIN TIM5_MspDeInit 0 */
+
+    /* USER CODE END TIM5_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_TIM5_CLK_DISABLE();
+
+    /**TIM5 GPIO Configuration
+    PF10     ------> TIM5_CH4
+    */
+    HAL_GPIO_DeInit(ECHO_GPIO_Port, ECHO_Pin);
+
+    /* TIM5 interrupt DeInit */
+    HAL_NVIC_DisableIRQ(TIM5_IRQn);
+    /* USER CODE BEGIN TIM5_MspDeInit 1 */
+
+    /* USER CODE END TIM5_MspDeInit 1 */
+  }
+  else if(htim_base->Instance==TIM9)
+  {
+    /* USER CODE BEGIN TIM9_MspDeInit 0 */
+
+    /* USER CODE END TIM9_MspDeInit 0 */
+    /* Peripheral clock disable */
+    __HAL_RCC_TIM9_CLK_DISABLE();
+
+    /**TIM9 GPIO Configuration
+    PE6     ------> TIM9_CH2
+    */
+    HAL_GPIO_DeInit(ARD_D5_GPIO_Port, ARD_D5_Pin);
+
+    /* USER CODE BEGIN TIM9_MspDeInit 1 */
+
+    /* USER CODE END TIM9_MspDeInit 1 */
   }
 
 }
