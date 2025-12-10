@@ -1,8 +1,7 @@
 # STM32CubeIDE / Eclipse Project Files
-.settings/
-.metadata/
-.cproject
-.project
+# .settings/  <-- Recommended to commit for consistent project settings
+# .cproject   <-- Required for project import
+# .project    <-- Required for project import
 
 # Build outputs
 Debug/
@@ -32,7 +31,7 @@ ehthumbs.db
 Thumbs.db
 
 # IDE specific
-*.launch
+# *.launch <-- Recommended to commit so teammates have debug configs
 .vscode/
 *.code-workspace
 
@@ -44,6 +43,3 @@ Thumbs.db
 *.temp
 *.log
 
-# Generated files
-*.tmp
-*.bak
