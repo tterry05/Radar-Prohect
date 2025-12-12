@@ -25,6 +25,7 @@
 /* USER CODE BEGIN Includes */
 #include "servo_control.h"
 #include "hc_sr04.h"
+#include "radar_draw.h"
 #include <stdio.h>
 #include <string.h>
 #include "semphr.h"
@@ -102,6 +103,17 @@ typedef struct {
 
 RawData_t xRawDataBuffer = {0, 0.0f};
 
+// System State
+volatile bool isSystemLoading = true; // <--- NEW: Track loading state
+
+// Task definition for Display
+osThreadId_t DisplayTaskHandle;
+const osThreadAttr_t DisplayTask_attributes = {
+  .name = "DisplayTask",
+  .stack_size = 512 * 4, // Larger stack for graphics
+  .priority = (osPriority_t) osPriorityBelowNormal,
+};
+
 
 /* USER CODE END PV */
 
@@ -127,6 +139,7 @@ void StartTUltrasonicMeasurementTask(void *argument);
 
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
+void StartDisplayTask(void *argument);
 
 /* USER CODE END PFP */
 
@@ -188,9 +201,11 @@ int main(void)
       Error_Handler();
   }
 
-  HCSR04_Init(&hc_sr04, TRIGGER_GPIO_Port, TRIGGER_Pin, &htim5,TIM_CHANNEL_4, &htim9);
-    // 2. Start the delay timer (required by hc_sr04.c's delay function)
-    HAL_TIM_Base_Start(&htim9);
+  HCSR04_Init(&hc_sr04, TRIGGER_GPIO_Port, TRIGGER_Pin, &htim5, TIM_CHANNEL_4, &htim9);
+  HAL_TIM_Base_Start(&htim9);
+
+  // Initialize Radar UI (This initializes the LCD hardware)
+  Radar_InitUI();
 
   // Wait at center position
   HAL_Delay(1000);
@@ -230,7 +245,8 @@ int main(void)
   UltrasonicMeasuHandle = osThreadNew(StartTUltrasonicMeasurementTask, NULL, &UltrasonicMeasu_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  /* creation of DisplayTask */
+  DisplayTaskHandle = osThreadNew(StartDisplayTask, NULL, &DisplayTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -1125,6 +1141,8 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
      HCSR04_IC_ISR(&hc_sr04, htim);
   }
 }
+
+
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartServoTask */
@@ -1136,26 +1154,21 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
 /* USER CODE END Header_StartServoTask */
 void StartServoTask(void *argument)
 {
-  /* init code for USB_HOST */
   MX_USB_HOST_Init();
-  /* USER CODE BEGIN 5 */
-	TickType_t xLastWakeTime;
-	const TickType_t xFrequency = pdMS_TO_TICKS(100); // 100ms interval
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = pdMS_TO_TICKS(50);
+  xLastWakeTime = xTaskGetTickCount();
 
-	xLastWakeTime = xTaskGetTickCount();
-
-	/* Infinite loop */
-	for(;;)
-	{
-		// 1. Perform the work (step the servo)
-		Servo_SweepStep();
-
-		// 2. Wait for the next cycle, maintaining the 100ms period
-		vTaskDelayUntil( &xLastWakeTime, xFrequency );
-	}
-  /* USER CODE END 5 */
+  for(;;)
+  {
+      // CHANGED: Only check if loading is finished.
+      // Removed "&& systemArmed"
+      if (!isSystemLoading) {
+          Servo_SweepStep();
+      }
+      vTaskDelayUntil( &xLastWakeTime, xFrequency );
+  }
 }
-
 /* USER CODE BEGIN Header_StartTUltrasonicMeasurementTask */
 /**
 * @brief Function implementing the UltrasonicMeasu thread.
@@ -1165,66 +1178,97 @@ void StartServoTask(void *argument)
 /* USER CODE END Header_StartTUltrasonicMeasurementTask */
 void StartTUltrasonicMeasurementTask(void *argument)
 {
-  /* USER CODE BEGIN StartTUltrasonicMeasurementTask */
-	TickType_t xLastWakeTime;
-	    const TickType_t xPeriod = pdMS_TO_TICKS(100);
+    TickType_t xLastWakeTime;
+    const TickType_t xPeriod = pdMS_TO_TICKS(500);
+    xLastWakeTime = xTaskGetTickCount();
 
-	    xLastWakeTime = xTaskGetTickCount();
+    for(;;)
+    {
+        vTaskDelayUntil(&xLastWakeTime, xPeriod);
 
-	    /* Infinite loop */
-	    for(;;)
-	    {
-	        // 1. Enforce 100ms Hard Real-Time Periodicity
-	        vTaskDelayUntil(&xLastWakeTime, xPeriod);
+        // CHANGED: Removed "if (systemArmed)" wrapper
+        // The sensor now runs continuously
+        if (xSemaphoreTake(xUltrasonicSensorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
+        {
+            float dist;
+            HCSR04_Trigger(&hc_sr04);
+            vTaskDelay(pdMS_TO_TICKS(60));
+            dist = HCSR04_ReadDistance(&hc_sr04);
+            xSemaphoreGive(xUltrasonicSensorMutex);
 
-	        // 2. Acquire Mutex to protect the physical sensor hardware
-	        if (xSemaphoreTake(xUltrasonicSensorMutex, pdMS_TO_TICKS(50)) == pdTRUE)
-	        {
-	            float distance;
+            if (xSemaphoreTake(xRawDataBufferMutex, pdMS_TO_TICKS(10)) == pdTRUE)
+            {
+                xRawDataBuffer.angle = xCurrentAngle;
+                xRawDataBuffer.distance_cm = dist;
+                xSemaphoreGive(xRawDataBufferMutex);
+            }
+        }
+    }
+}
 
-	            // --- A. Trigger the sensor ---
-	            HCSR04_Trigger(&hc_sr04);
+/* USER CODE BEGIN Header_StartDisplayTask */
+/**
+* @brief Function implementing the DisplayTask thread.
+*/
+/* USER CODE END Header_StartDisplayTask */
+void StartDisplayTask(void *argument)
+{
+  TickType_t xLastWakeTime;
+  const TickType_t xFrequency = pdMS_TO_TICKS(50);
 
-	            // **FIX: Add delay to allow sensor to complete measurement**
-	            // HC-SR04 needs up to 38ms to complete measurement (max range ~4m)
-	            vTaskDelay(pdMS_TO_TICKS(60));  // Wait 60ms for measurement to complete
+  uint16_t lastAngle = 0;
+  float lastDist = 0;
 
-	            // --- B. Read the distance ---
-	            distance = HCSR04_ReadDistance(&hc_sr04);
+  // Setup Timing for Loading
+  uint32_t systemStartTime = HAL_GetTick();
+  const uint32_t loadingDuration = 5000; // 5 Seconds
 
-	            // Release sensor mutex
-	            xSemaphoreGive(xUltrasonicSensorMutex);
+  // Initial Clear
+  BSP_LCD_Clear(COLOR_BACKGROUND);
 
-	            // 3. Save result to the shared Raw Data Buffer (Protected by its own Mutex)
-	            if (xSemaphoreTake(xRawDataBufferMutex, pdMS_TO_TICKS(10)) == pdTRUE)
-	            {
-	                // Read the current angle (from the Servo Sweep Task's shared variable)
-	                xRawDataBuffer.angle = xCurrentAngle;
-	                xRawDataBuffer.distance_cm = distance;
+  xLastWakeTime = xTaskGetTickCount();
 
-	                xSemaphoreGive(xRawDataBufferMutex);
+  for(;;)
+  {
+      // --- LOADING PHASE ---
+      if (isSystemLoading)
+      {
+          uint32_t elapsed = HAL_GetTick() - systemStartTime;
 
-	                // 4. Notify the Radar Data Processing Task that a new reading is ready
-	                // (Currently not implemented, so skip this for now)
-	                if (xRadarDataProcessingTaskHandle != NULL)
-	                {
-	                    xTaskNotifyGive(xRadarDataProcessingTaskHandle);
-	                }
+          if (elapsed < loadingDuration) {
+              uint8_t progress = (uint8_t)((elapsed * 100) / loadingDuration);
+              Radar_DrawLoading(progress);
+          }
+          else {
+              // Loading Finished!
+              isSystemLoading = false;
 
-	                // --- 5. UART Output for debugging ---
-	                char uartBuf[100];
-	                sprintf(uartBuf, "A=%u, D=%.1f cm\r\n", xCurrentAngle, distance);
-	                HAL_UART_Transmit(&huart6, (uint8_t *)uartBuf, strlen(uartBuf), 100);
-	            }
-	        }
-	        else
-	        {
-	            // Failed to get sensor mutex - report error
-	            char errorBuf[] = "ERROR: Sensor mutex timeout\r\n";
-	            HAL_UART_Transmit(&huart6, (uint8_t *)errorBuf, strlen(errorBuf), 100);
-	        }
-	    }
-  /* USER CODE END StartTUltrasonicMeasurementTask */
+              // Clean up screen and prep Radar
+              BSP_LCD_Clear(COLOR_BACKGROUND);
+              Radar_DrawGrid();
+              // REMOVED: Radar_ShowStatus(systemArmed);
+          }
+      }
+      // --- ACTIVE RADAR PHASE ---
+      else
+            {
+                // --- ACTIVE RADAR PHASE ---
+
+                // Get the latest sensor data (This will now update only every 500ms)
+                if (xSemaphoreTake(xRawDataBufferMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+                    lastAngle = xRawDataBuffer.angle;
+                    lastDist = xRawDataBuffer.distance_cm;
+                    xSemaphoreGive(xRawDataBufferMutex);
+                }
+
+                // CRITICAL CHANGE:
+                // Pass 'xCurrentAngle' for the green line (Smooth)
+                // Pass 'lastAngle' for the red dot (Accurate to when it was measured)
+                Radar_UpdateSweep(xCurrentAngle, lastAngle, lastDist);
+            }
+
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
+        }
 }
 
 /**
