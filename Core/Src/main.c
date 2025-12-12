@@ -1156,15 +1156,41 @@ void StartServoTask(void *argument)
 {
   MX_USB_HOST_Init();
   TickType_t xLastWakeTime;
-  const TickType_t xFrequency = pdMS_TO_TICKS(50);
+  const TickType_t xFrequency = pdMS_TO_TICKS(20);
+
+  // Sweep State
+  int16_t currentServoAngle = 0;
+  int8_t stepDirection = 1;
+
   xLastWakeTime = xTaskGetTickCount();
 
   for(;;)
   {
-      // CHANGED: Only check if loading is finished.
-      // Removed "&& systemArmed"
       if (!isSystemLoading) {
-          Servo_SweepStep();
+
+          currentServoAngle += stepDirection;
+
+          // BOUNDARY CHECKS
+          if (currentServoAngle >= 180) {
+              currentServoAngle = 180;
+              stepDirection = -1;
+
+              // --- SET FLAG HERE ---
+              g_ReloadGrid = true;
+          }
+          else if (currentServoAngle <= 0) {
+              currentServoAngle = 0;
+              stepDirection = 1;
+
+              // --- SET FLAG HERE ---
+              g_ReloadGrid = true;
+          }
+
+          // Move Hardware
+          uint32_t pulse = 500 + (currentServoAngle * 2000 / 180);
+          __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, pulse);
+
+          xCurrentAngle = (uint16_t)currentServoAngle;
       }
       vTaskDelayUntil( &xLastWakeTime, xFrequency );
   }
