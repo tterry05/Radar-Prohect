@@ -25,8 +25,8 @@ This radar project implements a servo-controlled scanning mechanism that sweeps 
 - ✅ FreeRTOS task-based architecture
 - ✅ Configurable sweep speed and step size
 - ✅ Real-time angle tracking
-- 🔄 *Coming Soon:* Distance sensor integration
-- 🔄 *Coming Soon:* On-board LCD radar display
+- ✅ Distance sensor integration
+- ✅ On-board LCD radar display
 
 ## Hardware Requirements
 
@@ -35,6 +35,7 @@ This radar project implements a servo-controlled scanning mechanism that sweeps 
 | **Board** | STM32F413H-Discovery |
 | **Servo** | SG90 or compatible (5V, PWM) |
 | **Power** | USB or external 5V for servo |
+| **Sensor** | HR_SC04 (Trigger, Echo, 5V) |
 
 ### Wiring Diagram
 
@@ -62,7 +63,7 @@ STM32F413H-Discovery          SG90 Servo
 radar-project/
 ├── Core/
 │   ├── Inc/
-│   │   ├── main.h              # Main header with pin definitions
+│   │   ├── main.h             # Main header with pin definitions
 │   │   ├── servo_control.h     # Servo API declarations
 │   │   └── FreeRTOSConfig.h    # RTOS configuration
 │   └── Src/
@@ -80,6 +81,7 @@ radar-project/
 | Task | Priority | Stack | Period | Description |
 |------|----------|-------|--------|-------------|
 | ServoTask | Normal | 512B | 100ms | Controls servo sweep |
+| UltrasonicTask | AboveNormal | 512B | 500ms | Detects Surroundings |
 
 ## Building & Flashing
 
@@ -150,13 +152,16 @@ Edit `servo_control.h` to customize:
 | Part | Description | Status |
 |------|-------------|--------|
 | [Part 1: Servo Control](docs/part1-servo-control.md) | PWM setup, FreeRTOS task, sweep logic | ✅ Complete |
-| Part 2: Distance Sensor | HC-SR04 ultrasonic integration | 🔄 Planned |
-| Part 3: LCD Display | On-board 240x240 LCD radar visualization | 🔄 Planned |
+| Part 2: Distance Sensor | HC-SR04 ultrasonic integration | ✅ Complete  |
+| Part 3: LCD Display | On-board 240x240 LCD radar visualization |✅ Complete  |
 
 ## Team
 
 **Team Lane 6**
 - Tommy Terry
+- Tyler Wojtiuk
+- Daniel Borgh
+- Ben Sindberg
 
 ## License
 
