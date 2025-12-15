@@ -52,8 +52,8 @@ STM32F413H-Discovery          SG90 Servo
 | Function | Pin | Arduino Header | Timer |
 |----------|-----|----------------|-------|
 | Servo PWM | PA5 | A3 | TIM2_CH1 |
-| User LED (Green) | PC5 | - | GPIO |
-| User LED (Red) | PE3 | - | GPIO |
+| Sensor Trigger | PC13 | D7 | GPIO_Output|
+|Sensor Echo | PF10 | D3| TIM5_CH4 |
 | User Button | PA0 | - | GPIO (EXTI) |
 
 ## Software Architecture
