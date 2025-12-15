@@ -107,8 +107,6 @@ void Error_Handler(void);
 #define CODEC_ext_SD_GPIO_Port GPIOC
 #define CODEC_SD_Pin GPIO_PIN_3
 #define CODEC_SD_GPIO_Port GPIOC
-#define SERVO_PWM_Pin GPIO_PIN_0
-#define SERVO_PWM_GPIO_Port GPIOA
 #define EDIT_ME_Pin GPIO_PIN_1
 #define EDIT_ME_GPIO_Port GPIOA
 #define ARD_A2_Pin GPIO_PIN_2
@@ -117,8 +115,8 @@ void Error_Handler(void);
 #define CODEC_MCK_GPIO_Port GPIOA
 #define ARD_D8_Pin GPIO_PIN_4
 #define ARD_D8_GPIO_Port GPIOA
-#define ARD_A3_Pin GPIO_PIN_5
-#define ARD_A3_GPIO_Port GPIOA
+#define SERVO_PWM_Pin GPIO_PIN_5
+#define SERVO_PWM_GPIO_Port GPIOA
 #define SD_CMD_Pin GPIO_PIN_6
 #define SD_CMD_GPIO_Port GPIOA
 #define DFSDM2_DATIN1_Pin GPIO_PIN_7
